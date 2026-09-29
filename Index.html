@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Chroma Hide 3D - Multiplayer</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; }
+    body, html { width: 100%; height: 100%; overflow: hidden; background: #0f172a; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #fff; }
+    
+    #canvas-container { width: 100%; height: 100%; position: absolute; top: 0; left: 0; z-index: 1; }
+
+    /* UI Overlay Framework */
+    .ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; pointer-events: none; display: flex; flex-direction: column; justify-content: space-between; }
+    .interactive { pointer-events: auto; }
+
+    /* Main Menu Screen */
+    .screen { position: absolute; inset: 0; background: rgba(15, 23, 42, 0.95); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 20; transition: opacity 0.3s ease; }
+    .hidden { display: none !important; }
+
+    .card { background: #1e293b; border: 2px solid #334155; border-radius: 16px; padding: 32px; width: 90%; max-width: 420px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.5); text-align: center; }
+    h1 { font-size: 2.5rem; font-weight: 800; background: linear-gradient(to right, #38bdf8, #818cf8); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 20px; text-transform: uppercase; letter-spacing: 2px; }
+    h2 { font-size: 1.5rem; margin-bottom: 16px; color: #f8fafc; }
+
+    input[type="text"] { width: 100%; padding: 14px; margin: 8px 0; background: #0f172a; border: 2px solid #475569; border-radius: 8px; color: #fff; font-size: 1rem; text-align: center; font-weight: bold; outline: none; }
+    input[type="text"]:focus { border-color: #38bdf8; }
+
+    .btn { width: 100%; padding: 14px; margin: 8px 0; background: #2563eb; color: #fff; border: none; border-radius: 8px; font-size: 1rem; font-weight: bold; cursor: pointer; transition: background 0.2s, transform 0.1s; }
+    .btn:hover { background: #1d4ed8; }
+    .btn:active { transform: scale(0.98); }
+    .btn-secondary { background: #475569; }
+    .btn-secondary:hover { background: #334155; }
+    .btn-success { background: #16a34a; }
+    .btn-success:hover { background: #15803d; }
+
+    /* Room Lobby Screen */
+    .player-list { background: #0f172a; border-radius: 8px; padding: 12px; margin: 16px 0; max-height: 180px; overflow-y: auto; text-align: left; }
+    .player-item { display: flex; justify-content: space-between; padding: 8px; border-bottom: 1px solid #1e293b; font-size: 0.95rem; }
+    .code-box { font-size: 2rem; font-weight: bold; letter-spacing: 6px; color: #38bdf8; background: #0f172a; padding: 12px; border-radius: 8px; border: 2px dashed #38bdf8; margin: 12px 0; }
+
+    /* HUD elements */
+    #hud { padding: 20px; display: flex; justify-content: space-between; align-items: flex-start; }
+    .hud-card { background: rgba(30, 41, 59, 0.85); backdrop-filter: blur(8px); padding: 12px 20px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); }
+    .timer-text { font-size: 1.8rem; font-weight: bold; color: #facc15; text-align: center; }
+    .role-text { font-size: 1.2rem; font-weight: bold; text-transform: uppercase; }
+
+    /* Crosshair for Seeker */
+    #crosshair { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 12px; height: 12px; border: 2px solid rgba(255,255,255,0.8); border-radius: 50%; pointer-events: none; z-index: 15; }
+    #crosshair::after { content: ''; position: absolute; top: 4px; left: 4px; width: 4px; height: 4px; background: #ef4444; border-radius: 50%; }
+
+    /* Controls Overlay for Mobile */
+    #mobile-controls { display: none; position: absolute; bottom: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+    #joystick-zone { position: absolute; bottom: 30px; left: 30px; width: 120px; height: 120px; background: rgba(255,255,255,0.1); border: 2px solid rgba(255,255,255,0.2); border-radius: 50%; pointer-events: auto; }
+    #joystick-knob { position: absolute; top: 35px; left: 35px; width: 50px; height: 50px; background: rgba(56, 189, 248, 0.6); border-radius: 50%; }
+    .action-btn { position: absolute; width: 70px; height: 70px; border-radius: 50%; background: rgba(37, 99, 235, 0.8); border: 2px solid #fff; color: white; font-weight: bold; display: flex; align-items: center; justify-content: center; pointer-events: auto; font-size: 0.9rem; }
+    #btn-shoot { bottom: 40px; right: 30px; background: rgba(220, 38, 38, 0.8); }
+    #btn-blend { bottom: 120px; right: 30px; background: rgba(22, 163, 74, 0.8); }
+
+    /* Toast Notifications */
+    #toast { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); background: #ef4444; color: white; padding: 10px 20px; border-radius: 8px; font-weight: bold; z-index: 100; transition: opacity 0.3s; opacity: 0; pointer-events: none; }
+  </style>
+</head>
+<body>
+
+  <div id="canvas-container"></div>
+  <div id="toast">Error message</div>
+
+  <!-- HUD Overlay -->
+  <div class="ui-layer">
+    <div id="hud" class="hidden">
+      <div class="hud-card">
+        <div>ROLE</div>
+        <div id="role-display" class="role-text" style="color: #38bdf8;">HIDER</div>
+      </div>
+      <div class="hud-card">
+        <div id="phase-display" style="font-size: 0.8rem; text-align: center; color: #94a3b8;">HIDING TIME</div>
+        <div id="timer-display" class="timer-text">00:20</div>
+      </div>
+      <div class="hud-card">
+        <div>ALIVE</div>
+        <div id="alive-display" class="timer-text" style="color: #4ade80;">0/0</div>
+      </div>
+    </div>
+
+    <!-- Mobile Touch UI Controls -->
+    <div id="mobile-controls">
+      <div id="joystick-zone">
+        <div id="joystick-knob"></div>
+      </div>
+      <div id="btn-shoot" class="action-btn">FIRE</div>
+      <div id="btn-blend" class="action-btn">BLEND</div>
+    </div>
+  </div>
+
+  <div id="crosshair" class="hidden"></div>
+
+  <!-- MAIN MENU SCREEN -->
+  <div id="screen-main" class="screen interactive">
+    <div class="card">
+      <h1>Chroma Hide</h1>
+      <input type="text" id="nickname-input" placeholder="Enter Your Nickname" maxlength="12">
+      <button class="btn" id="btn-play-friends">PLAY WITH FRIENDS</button>
+      <button class="btn btn-secondary" id="btn-how-to">HOW TO PLAY</button>
+    </div>
+  </div>
+
+  <!-- LOBBY SELECTION SCREEN -->
+  <div id="screen-lobby-select" class="screen interactive hidden">
+    <div class="card">
+      <h2>Multiplayer Room</h2>
+      <button class="btn btn-success" id="btn-create-room">CREATE ROOM</button>
+      <div style="margin: 12px 0; color: #64748b; font-weight: bold;">OR</div>
+      <input type="text" id="room-code-input" placeholder="ENTER 5-LETTER CODE" maxlength="5" style="text-transform: uppercase;">
+      <button class="btn" id="btn-join-room">JOIN ROOM</button>
+      <button class="btn btn-secondary" id="btn-back-main">BACK</button>
+    </div>
+  </div>
+
+  <!-- ROOM LOBBY SCREEN -->
+  <div id="screen-room-lobby" class="screen interactive hidden">
+    <div class="card">
+      <h2>Room Lobby</h2>
+      <div class="code-box" id="display-room-code">-----</div>
+      <button class="btn btn-secondary" id="btn-copy-code" style="margin-bottom: 12px;">COPY CODE</button>
+      <div style="text-align: left; font-size: 0.9rem; color: #94a3b8;">PLAYERS CONNECTED:</div>
+      <div class="player-list" id="player-list-container"></div>
+      <button class="btn btn-success hidden" id="btn-start-game">START GAME</button>
+      <div id="waiting-host-msg" style="color: #facc15; font-size: 0.9rem; margin-top: 8px;">Waiting for host to start...</div>
+    </div>
+  </div>
+
+  <!-- GAME OVER / ROUND END SCREEN -->
+  <div id="screen-round-end" class="screen interactive hidden">
+    <div class="card">
+      <h2 id="round-result-title">ROUND ENDED</h2>
+      <p id="round-result-msg" style="margin-bottom: 20px; color: #cbd5e1;"></p>
+      <button class="btn btn-success hidden" id="btn-next-round">NEXT ROUND</button>
+      <div id="waiting-next-round" style="color: #facc15; font-size: 0.9rem;">Waiting for host...</div>
+    </div>
+  </div>
+
+  <!-- Three.js and Socket.IO dependencies -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="/socket.io/socket.io.js"></script>
+
+  <script>
+    // --- AUDIO SYSTEM (WebAudio Synthesizer - No External Assets Needed) ---
+    const AudioEngine = {
+      ctx: null,
+      init() {
+        if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+      },
+      playShoot() {
+        if (!this.ctx) return;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(400, this.ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(80, this.ctx.currentTime + 0.15);
+        gain.gain.setValueAtTime(0.3, this.ctx.currentTime);
+        gain.gain.linearRampToValueAtTime(0.01, this.ctx.currentTime + 0.15);
+        osc.connect(gain); gain.connect(this.ctx.destination);
+        osc.start(); osc.stop(this.ctx.currentTime + 0.15);
+      },
+      playHit() {
+        if (!this.ctx) return;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(150, this.ctx.currentTime);
+        osc.frequency.linearRampToValueAtTime(600, this.ctx.currentTime + 0.2);
+        gain.gain.setValueAtTime(0.4, this.ctx.currentTime);
+        gain.gain.linearRampToValueAtTime(0.01, this.ctx.currentTime + 0.2);
+        osc.connect(gain); gain.connect(this.ctx.destination);
+        osc.start(); osc.stop(this.ctx.currentTime + 0.2);
+      },
+      playBlend() {
+        if (!this.ctx) return;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(300, this.ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(800, this.ctx.currentTime + 0.25);
+        gain.gain.setValueAtTime(0.2, this.ctx.currentTime);
+        gain.gain.linearRampToValueAtTime(0.01, this.ctx.currentTime + 0.25);
+        osc.connect(gain); gain.connect(this.ctx.destination);
+        osc.start(); osc.stop(this.ctx.currentTime + 0.25);
+      }
+    };
+
+    // --- GAME CLIENT ENGINE ---
+    const socket = io();
+    let localPlayer = { id: null, nickname: '', role: 'hider', isHost: false, isEliminated: false };
+    let roomCode = '';
+    let playersMap = new Map();
+    let remoteMeshes = new Map();
+    let mapObjects = [];
+
+    // Three.js Core Globals
+    let scene, camera, renderer;
+    let localMesh, weaponMesh;
+    let moveForward = false, moveBackward = false, moveLeft = false, moveRight = false;
+    let yaw = 0, pitch = 0;
+    const playerSpeed = 0.15;
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
+    // Initialization
+    window.addEventListener('DOMContentLoaded', () => {
+      initThreeJS();
+      setupUIEventListeners();
+      setupSocketListeners();
+      if (isMobile) document.getElementById('mobile-controls').style.display = 'block';
+    });
+
+    function initThreeJS() {
+      const container = document.getElementById('canvas-container');
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x0f172a);
+      scene.fog = new THREE.FogExp2(0x0f172a, 0.015);
+
+      camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+      
+      renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.shadowMap.enabled = true;
+      container.appendChild(renderer.domElement);
+
+      // Lights
+      const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+      scene.add(ambientLight);
+
+      const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+      dirLight.position.set(20, 40, 20);
+      dirLight.castShadow = true;
+      scene.add(dirLight);
+
+      // Create Local Weapon Model (For Seeker POV)
+      const weaponGeo = new THREE.BoxGeometry(0.2, 0.2, 0.8);
+      const weaponMat = new THREE.MeshStandardMaterial({ color: 0x38bdf8 });
+      weaponMesh = new THREE.Mesh(weaponGeo, weaponMat);
+      weaponMesh.position.set(0.3, -0.25, -0.5);
+      camera.add(weaponMesh);
+      weaponMesh.visible = false;
+      scene.add(camera);
+
+      window.addEventListener('resize', onWindowResize);
+      setupControls();
+      animate();
+    }
+
+    // Procedural Map Generator
+    function buildMap(mapId) {
+      // Clear existing map objects
+      mapObjects.forEach(obj => scene.remove(obj));
+      mapObjects = [];
+
+      // Floor
+      const floorGeo = new THREE.PlaneGeometry(80, 80);
+      const floorMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.8 });
+      const floor = new THREE.Mesh(floorGeo, floorMat);
+      floor.rotation.x = -Math.PI / 2;
+      floor.receiveShadow = true;
+      scene.add(floor);
+      mapObjects.push(floor);
+
+      // Walls
+      const wallMat = new THREE.MeshStandardMaterial({ color: 0x1e293b });
+      const createWall = (w, h, d, x, y, z) => {
+        const wall = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), wallMat);
+        wall.position.set(x, y, z);
+        wall.castShadow = true; wall.receiveShadow = true;
+        scene.add(wall);
+        mapObjects.push(wall);
+      };
+
+      createWall(80, 8, 2, 0, 4, -40);
+      createWall(80, 8, 2, 0, 4, 40);
+      createWall(2, 8, 80, -40, 4, 0);
+      createWall(2, 8, 80, 40, 4, 0);
+
+      // Hiding Props (Containers, Crates, Barrels)
+      const propMaterials = [
+        new THREE.MeshStandardMaterial({ color: 0xef4444 }), // Red crate
+        new THREE.MeshStandardMaterial({ color: 0x3b82f6 }), // Blue barrel
+        new THREE.MeshStandardMaterial({ color: 0x10b981 }), // Green container
+        new THREE.MeshStandardMaterial({ color: 0xf59e0b })  // Yellow block
+      ];
+
+      // Seeded prop distribution
+      for (let i = 0; i < 45; i++) {
+        const mat = propMaterials[i % propMaterials.length];
+        let geo;
+        const type = i % 3;
+        
+        if (type === 0) geo = new THREE.BoxGeometry(2, 2, 2);
+        else if (type === 1) geo = new THREE.CylinderGeometry(1, 1, 2.5, 16);
+        else geo = new THREE.BoxGeometry(3, 4, 3);
+
+        const prop = new THREE.Mesh(geo, mat);
+        prop.position.x = (Math.sin(i * 99) * 32);
+        prop.position.z = (Math.cos(i * 33) * 32);
+        prop.position.y = type === 2 ? 2 : 1;
+        prop.castShadow = true;
+        prop.receiveShadow = true;
+        
+        // Store texture ID for blending mechanic
+        prop.userData = { blendColor: mat.color.getHex(), propId: (i % propMaterials.length) + 1 };
+
+        scene.add(prop);
+        mapObjects.push(prop);
+      }
+    }
+
+    // Dynamic Player Mesh Generation
+    function createPlayerMesh(colorHex) {
+      const group = new THREE.Group();
+      const bodyGeo = new THREE.CapsuleGeometry(0.6, 1.2, 4, 8);
+      const bodyMat = new THREE.MeshStandardMaterial({ color: colorHex || 0x38bdf8 });
+      const body = new THREE.Mesh(bodyGeo, bodyMat);
+      body.position.y = 1;
+      body.castShadow = true;
+      group.add(body);
+      group.userData = { bodyMesh: body, originalMat: bodyMat };
+      return group;
+    }
+
+    // Input Controls & Camera Motion
+    function setupControls() {
+      // Desktop Key Listeners
+      window.addEventListener('keydown', (e) => {
+        if (e.code === 'KeyW' || e.code === 'ArrowUp') moveForward = true;
+        if (e.code === 'KeyS' || e.code === 'ArrowDown') moveBackward = true;
+        if (e.code === 'KeyA' || e.code === 'ArrowLeft') moveLeft = true;
+        if (e.code === 'KeyD' || e.code === 'ArrowRight') moveRight = true;
+        if (e.code === 'KeyE') performBlend();
+      });
+
+      window.addEventListener('keyup', (e) => {
+        if (e.code === 'KeyW' || e.code === 'ArrowUp') moveForward = false;
+        if (e.code === 'KeyS' || e.code === 'ArrowDown') moveBackward = false;
+        if (e.code === 'KeyA' || e.code === 'ArrowLeft') moveLeft = false;
+        if (e.code === 'KeyD' || e.code === 'ArrowRight') moveRight = false;
+      });
+
+      // Pointer Lock Mouse Controls
+      document.getElementById('canvas-container').addEventListener('click', () => {
+        AudioEngine.init();
+        if (!isMobile && document.getElementById('screen-main').classList.contains('hidden')) {
+          document.body.requestPointerLock();
+        }
+      });
+
+      window.addEventListener('mousemove', (e) => {
+        if (document.pointerLockElement === document.body) {
+          yaw -= e.movementX * 0.002;
+          pitch -= e.movementY * 0.002;
+          pitch = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, pitch));
+        }
+      });
+
+      // Mouse Click Shooting
+      window.addEventListener('mousedown', (e) => {
+        if (e.button === 0 && document.pointerLockElement === document.body) {
+          triggerShoot();
+        }
+      });
+
+      // Touch Controls Setup for Mobile
+      setupTouchControls();
+    }
+
+    function setupTouchControls() {
+      const joystickZone = document.getElementById('joystick-zone');
+      const knob = document.getElementById('joystick-knob');
+      let touchId = null, startX = 0, startY = 0;
+
+      joystickZone.addEventListener('touchstart', (e) => {
+        const t = e.changedTouches[0];
+        touchId = t.identifier;
+        startX = t.clientX; startY = t.clientY;
+      });
+
+      joystickZone.addEventListener('touchmove', (e) => {
+        for (let t of e.changedTouches) {
+          if (t.identifier === touchId) {
+            const dx = t.clientX - startX;
+            const dy = t.clientY - startY;
+            const dist = Math.min(40, Math.hypot(dx, dy));
+            const angle = Math.atan2(dy, dx);
+            
+            knob.style.transform = `translate(${Math.cos(angle)*dist}px, ${Math.sin(angle)*dist}px)`;
+            
+            moveForward = dy < -10;
+            moveBackward = dy > 10;
+            moveLeft = dx < -10;
+            moveRight = dx > 10;
+          }
+        }
+      });
+
+      const resetJoystick = () => {
+        touchId = null;
+        knob.style.transform = `translate(0px, 0px)`;
+        moveForward = moveBackward = moveLeft = moveRight = false;
+      };
+
+      joystickZone.addEventListener('touchend', resetJoystick);
+      joystickZone.addEventListener('touchcancel', resetJoystick);
+
+      // Touch Look Camera
+      window.addEventListener('touchmove', (e) => {
+        for (let t of e.touches) {
+          if (t.target !== joystickZone && !joystickZone.contains(t.target)) {
+            yaw -= (t.clientX - (t.previousX || t.clientX)) * 0.005;
+            pitch -= (t.clientY - (t.previousY || t.clientY)) * 0.005;
+            pitch = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, pitch));
+            t.previousX = t.clientX; t.previousY = t.clientY;
+          }
+        }
+      });
+
+      document.getElementById('btn-shoot').addEventListener('click', triggerShoot);
+      document.getElementById('btn-blend').addEventListener('click', performBlend);
+    }
+
+    // Blend/Paint Mechanic for Hiders
+    function performBlend() {
+      if (localPlayer.role !== 'hider' || localPlayer.isEliminated) return;
+
+      // Find closest prop
+      let closestProp = null;
+      let minDist = 3.5; // Distance threshold to blend
+
+      mapObjects.forEach(obj => {
+        if (obj.userData && obj.userData.blendColor) {
+          const dist = camera.position.distanceTo(obj.position);
+          if (dist < minDist) {
+            minDist = dist;
+            closestProp = obj;
+          }
+        }
+      });
+
+      if (closestProp) {
+        AudioEngine.playBlend();
+        socket.emit('apply_paint', { textureId: closestProp.userData.propId });
+      } else {
+        showToast("Get closer to an object to blend!");
+      }
+    }
+
+    // Water Gun Weapon Trigger for Seekers
+    function triggerShoot() {
+      if (localPlayer.role !== 'seeker' || localPlayer.isEliminated) return;
+
+      AudioEngine.playShoot();
+
+      const dir = new THREE.Vector3();
+      camera.getWorldDirection(dir);
+
+      socket.emit('shoot_water', {
+        origin: { x: camera.position.x, y: camera.position.y, z: camera.position.z },
+        direction: { x: dir.x, y: dir.y, z: dir.z }
+      });
+
+      // Local Gun Recoil Effect
+      weaponMesh.position.z = -0.3;
+      setTimeout(() => weaponMesh.position.z = -0.5, 80);
+    }
+
+    // Main Game Loop
+    function animate() {
+      requestAnimationFrame(animate);
+
+      // Movement updates
+      if (localPlayer.id && !localPlayer.isEliminated) {
+        const moveVec = new THREE.Vector3();
+        if (moveForward) moveVec.z -= 1;
+        if (moveBackward) moveVec.z += 1;
+        if (moveLeft) moveVec.x -= 1;
+        if (moveRight) moveVec.x += 1;
+
+        moveVec.normalize();
+        moveVec.applyAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
+        
+        camera.position.x += moveVec.x * playerSpeed;
+        camera.position.z += moveVec.z * playerSpeed;
+
+        // Camera Rotation Matrix
+        camera.rotation.order = 'YXZ';
+        camera.rotation.y = yaw;
+        camera.rotation.x = pitch;
+
+        // Sync position over network
+        socket.emit('player_move', {
+          x: camera.position.x,
+          y: camera.position.y,
+          z: camera.position.z,
+          rotationY: yaw
+        });
+      }
+
+      renderer.render(scene, camera);
+    }
+
+    function onWindowResize() {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    // --- UI & NETWORK HANDLERS ---
+    function setupUIEventListeners() {
+      document.getElementById('btn-play-friends').addEventListener('click', () => {
+        const nickname = document.getElementById('nickname-input').value.trim();
+        if (!nickname) { showToast("Please enter a nickname!"); return; }
+        localPlayer.nickname = nickname;
+        switchScreen('screen-lobby-select');
+      });
+
+      document.getElementById('btn-create-room').addEventListener('click', () => {
+        socket.emit('create_room', { nickname: localPlayer.nickname });
+      });
+
+      document.getElementById('btn-join-room').addEventListener('click', () => {
+        const code = document.getElementById('room-code-input').value.trim();
+        if (code.length !== 5) { showToast("Enter a valid 5-character code!"); return; }
+        socket.emit('join_room', { roomCode: code, nickname: localPlayer.nickname });
+      });
+
+      document.getElementById('btn-back-main').addEventListener('click', () => switchScreen('screen-main'));
+
+      document.getElementById('btn-copy-code').addEventListener('click', () => {
+        navigator.clipboard.writeText(roomCode);
+        showToast("Room code copied to clipboard!");
+      });
+
+      document.getElementById('btn-start-game').addEventListener('click', () => {
+        socket.emit('start_game');
+      });
+
+      document.getElementById('btn-next-round').addEventListener('click', () => {
+        socket.emit('start_game');
+      });
+    }
+
+    function setupSocketListeners() {
+      socket.on('room_created', (data) => {
+        roomCode = data.roomCode;
+        localPlayer.isHost = true;
+        localPlayer.id = socket.id;
+        updateLobbyUI(data.players);
+        switchScreen('screen-room-lobby');
+      });
+
+      socket.on('room_joined', (data) => {
+        roomCode = data.roomCode;
+        localPlayer.isHost = false;
+        localPlayer.id = socket.id;
+        updateLobbyUI(data.players);
+        switchScreen('screen-room-lobby');
+      });
+
+      socket.on('player_joined', (data) => {
+        updateLobbyUI(data.players);
+      });
+
+      socket.on('player_left', (data) => {
+        if (remoteMeshes.has(data.id)) {
+          scene.remove(remoteMeshes.get(data.id));
+          remoteMeshes.delete(data.id);
+        }
+        updateLobbyUI(data.players);
+      });
+
+      socket.on('promoted_to_host', () => {
+        localPlayer.isHost = true;
+        document.getElementById('btn-start-game').classList.remove('hidden');
+        document.getElementById('waiting-host-msg').classList.add('hidden');
+      });
+
+      socket.on('round_started', (data) => {
+        buildMap(data.mapId);
+        
+        // Find local player state
+        const me = data.players.find(p => p.id === socket.id);
+        localPlayer.role = me.role;
+        localPlayer.isEliminated = false;
+
+        camera.position.set(me.x, me.y, me.z);
+
+        // Update HUD UI
+        document.getElementById('hud').classList.remove('hidden');
+        document.getElementById('role-display').textContent = me.role.toUpperCase();
+        document.getElementById('role-display').style.color = me.role === 'seeker' ? '#ef4444' : '#38bdf8';
+        
+        weaponMesh.visible = me.role === 'seeker';
+        if (me.role === 'seeker') document.getElementById('crosshair').classList.remove('hidden');
+        else document.getElementById('crosshair').classList.add('hidden');
+
+        // Render Remote Players
+        data.players.forEach(p => {
+          if (p.id !== socket.id) {
+            const mesh = createPlayerMesh(p.color);
+            mesh.position.set(p.x, p.y, p.z);
+            scene.add(mesh);
+            remoteMeshes.set(p.id, mesh);
+          }
+        });
+
+        hideAllScreens();
+      });
+
+      socket.on('timer_update', (data) => {
+        const mins = Math.floor(data.timer / 60).toString().padStart(2, '0');
+        const secs = (data.timer % 60).toString().padStart(2, '0');
+        document.getElementById('timer-display').textContent = `${mins}:${secs}`;
+      });
+
+      socket.on('seekers_released', (data) => {
+        document.getElementById('phase-display').textContent = "SEEKERS RELEASED!";
+        document.getElementById('phase-display').style.color = "#ef4444";
+      });
+
+      socket.on('player_moved', (data) => {
+        const mesh = remoteMeshes.get(data.id);
+        if (mesh) {
+          mesh.position.set(data.x, data.y - 1, data.z);
+          mesh.rotation.y = data.rotationY;
+        }
+      });
+
+      socket.on('player_painted', (data) => {
+        const mesh = remoteMeshes.get(data.id);
+        if (mesh) {
+          // Visual color shift when blended
+          const colors = [0xef4444, 0x3b82f6, 0x10b981, 0xf59e0b];
+          mesh.userData.bodyMesh.material.color.setHex(colors[(data.textureId - 1) % colors.length]);
+        }
+      });
+
+      socket.on('hider_eliminated', (data) => {
+        AudioEngine.playHit();
+        showToast(`${data.hiderName} was found by ${data.seekerName}!`);
+
+        if (data.hiderId === socket.id) {
+          localPlayer.isEliminated = true;
+          showToast("You were caught! Spectating...");
+        } else if (remoteMeshes.has(data.hiderId)) {
+          scene.remove(remoteMeshes.get(data.hiderId));
+          remoteMeshes.delete(data.hiderId);
+        }
+      });
+
+      socket.on('round_ended', (data) => {
+        document.getElementById('hud').classList.add('hidden');
+        document.getElementById('crosshair').classList.add('hidden');
+        document.exitPointerLock();
+
+        document.getElementById('round-result-title').textContent = "ROUND OVER";
+        document.getElementById('round-result-msg').textContent = data.winnerReason;
+
+        if (localPlayer.isHost) {
+          document.getElementById('btn-next-round').classList.remove('hidden');
+          document.getElementById('waiting-next-round').classList.add('hidden');
+        } else {
+          document.getElementById('btn-next-round').classList.add('hidden');
+          document.getElementById('waiting-next-round').classList.remove('hidden');
+        }
+
+        switchScreen('screen-round-end');
+      });
+
+      socket.on('error_msg', (msg) => showToast(msg));
+    }
+
+    // Helper UI functions
+    function switchScreen(screenId) {
+      hideAllScreens();
+      document.getElementById(screenId).classList.remove('hidden');
+    }
+
+    function hideAllScreens() {
+      const screens = document.querySelectorAll('.screen');
+      screens.forEach(s => s.classList.add('hidden'));
+    }
+
+    function updateLobbyUI(players) {
+      document.getElementById('display-room-code').textContent = roomCode;
+      const listContainer = document.getElementById('player-list-container');
+      listContainer.innerHTML = '';
+
+      players.forEach(p => {
+        const item = document.createElement('div');
+        item.className = 'player-item';
+        item.innerHTML = `<span>${p.nickname} ${p.isHost ? '👑' : ''}</span><span style="color:#94a3b8">${p.id === socket.id ? '(You)' : ''}</span>`;
+        listContainer.appendChild(item);
+      });
+
+      if (localPlayer.isHost) {
+        document.getElementById('btn-start-game').classList.remove('hidden');
+        document.getElementById('waiting-host-msg').classList.add('hidden');
+      } else {
+        document.getElementById('btn-start-game').classList.add('hidden');
+        document.getElementById('waiting-host-msg').classList.remove('hidden');
+      }
+    }
+
+    function showToast(msg) {
+      const toast = document.getElementById('toast');
+      toast.textContent = msg;
+      toast.style.opacity = 1;
+      setTimeout(() => toast.style.opacity = 0, 3000);
+    }
+  </script>
+</body>
+</html>
