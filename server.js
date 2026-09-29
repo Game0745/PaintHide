@@ -11,7 +11,12 @@ const io = new Server(server, {
   pingTimeout: 5000
 });
 
-app.use(express.static(path.join(__dirname)));
+// Explicitly serve static files and route '/' directly to index.html
+app.use(express.static(__dirname));
+
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'index.html'));
+});
 
 const PORT = process.env.PORT || 3000;
 
@@ -198,12 +203,10 @@ io.on('connection', (socket) => {
 
     room.players.forEach((target, targetId) => {
       if (target.role === 'hider' && !target.isEliminated) {
-        // Distance check between ray and target cylinder/sphere
         const dx = target.x - rayOrigin.x;
         const dy = target.y - rayOrigin.y;
         const dz = target.z - rayOrigin.z;
 
-        // Project target vector onto ray direction
         const dot = dx * rayDir.x + dy * rayDir.y + dz * rayDir.z;
 
         if (dot > 0 && dot < 40) { // Max weapon range 40 units
@@ -213,7 +216,6 @@ io.on('connection', (socket) => {
 
           const distSq = Math.pow(target.x - projX, 2) + Math.pow(target.y - projY, 2) + Math.pow(target.z - projZ, 2);
 
-          // Hit threshold radius
           if (distSq < 2.25) { // 1.5 meter hit box
             target.isEliminated = true;
             io.to(currentRoom).emit('hider_eliminated', {
@@ -246,8 +248,10 @@ io.on('connection', (socket) => {
         const nextHostId = room.players.keys().next().value;
         room.hostId = nextHostId;
         const nextHost = room.players.get(nextHostId);
-        nextHost.isHost = true;
-        io.to(nextHostId).emit('promoted_to_host');
+        if (nextHost) {
+          nextHost.isHost = true;
+          io.to(nextHostId).emit('promoted_to_host');
+        }
       }
 
       io.to(currentRoom).emit('player_left', {
@@ -281,7 +285,7 @@ function startNewRound(room) {
     p.role = idx < seekerCount ? 'seeker' : 'hider';
     p.isEliminated = false;
     p.paintTextureId = 0;
-    // Spawn positions distribution
+    
     if (p.role === 'seeker') {
       p.x = 0; p.y = 1; p.z = -20;
     } else {
